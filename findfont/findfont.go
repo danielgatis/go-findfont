@@ -5,11 +5,11 @@ package findfont
 // #include <fontconfig/fontconfig.h>
 import "C"
 import (
+	"fmt"
 	"strings"
 	"unsafe"
 
 	"github.com/danielgatis/go-ptrloop/ptrloop"
-	"github.com/pkg/errors"
 )
 
 type fontStyle byte
@@ -43,7 +43,7 @@ func Find(family string, style fontStyle) ([][]string, error) {
 	fs := C.FcFontSetCreate()
 
 	if fontPatterns == nil || fontPatterns.nfont == 0 {
-		err = errors.New("No fonts installed on the system")
+		err = fmt.Errorf("No fonts installed on the system")
 		goto Exit
 	}
 
