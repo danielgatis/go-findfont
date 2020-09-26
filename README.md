@@ -1,9 +1,8 @@
+# go-findfont
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/danielgatis/go-findfont?style=flat-square)](https://goreportcard.com/report/github.com/danielgatis/go-findfont)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/danielgatis/go-findfont/master/LICENSE)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/danielgatis/go-findfont)
-
-# go-findfont
 
 Find system fonts through the fontconfig library (a.k.a `fc-match`)
 
