@@ -1,104 +1,126 @@
 package findfont
 
-// #cgo pkg-config: fontconfig
-// #include <stdlib.h>
-// #include <fontconfig/fontconfig.h>
-import "C"
 import (
 	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
 	"strings"
-	"unsafe"
-
-	"github.com/danielgatis/go-ptrloop/ptrloop"
 )
 
-type fontStyle byte
-
-const (
-	// FontRegular Regular style
-	FontRegular fontStyle = 0x00
-	// FontBold Bold Style
-	FontBold fontStyle = 0x01
-	// FontItalic Italic style
-	FontItalic fontStyle = 0x02
-)
-
-// Find Returns a list of fonts through the fontconfig library
-func Find(family string, style fontStyle) ([][]string, error) {
-	var err error
-
-	fontList := make([][]string, 0)
-	format := C.CString("%{family};;%{style};;%{file}")
-
-	family += strStyle(style)
-	name := C.CString(family)
-
-	pattern := C.FcNameParse((*C.FcChar8)(unsafe.Pointer(name)))
-	C.FcConfigSubstitute(nil, pattern, C.FcMatchPattern)
-	C.FcDefaultSubstitute(pattern)
-
-	var t C.FcResult
-	fontPatterns := C.FcFontSort(nil, pattern, C.FcTrue, nil, &t)
-
-	fs := C.FcFontSetCreate()
-
-	if fontPatterns == nil || fontPatterns.nfont == 0 {
-		err = fmt.Errorf("No fonts installed on the system")
-		goto Exit
-	}
-
-	ptrloop.Loop(
-		unsafe.Pointer(fontPatterns.fonts),
-		int(fontPatterns.nfont),
-		func(ptr unsafe.Pointer, i int) bool {
-			font := *(**C.FcPattern)(ptr)
-			fontPattern := C.FcFontRenderPrepare(nil, pattern, font)
-
-			if fontPattern != nil {
-				C.FcFontSetAdd(fs, fontPattern)
-			}
-
-			return true
-		},
-	)
-
-	ptrloop.Loop(
-		unsafe.Pointer(fs.fonts),
-		int(fs.nfont),
-		func(ptr unsafe.Pointer, i int) bool {
-			font := *(**C.FcPattern)(ptr)
-
-			f := C.FcPatternFilter(font, nil)
-			s := C.FcPatternFormat(f, (*C.FcChar8)(unsafe.Pointer(format)))
-			r := C.GoString((*C.char)(unsafe.Pointer(s)))
-
-			fontList = append(fontList, strings.Split(r, ";;"))
-			C.FcPatternDestroy(f)
-
-			return true
-		},
-	)
-
-Exit:
-	C.free(unsafe.Pointer(format))
-	C.free(unsafe.Pointer(name))
-	C.FcPatternDestroy(pattern)
-	C.FcFontSetDestroy(fs)
-	C.FcFontSetSortDestroy(fontPatterns)
-	C.FcFini()
-
-	return fontList, err
+func defaultSuffixes() []string {
+	return []string{".ttf", ".ttc", ".otf"}
 }
 
-func strStyle(style fontStyle) string {
-	switch style {
-	case FontBold:
-		return ":Bold"
-	case FontItalic:
-		return ":Italic"
-	case FontBold | FontItalic:
-		return ":Bold:Italic"
-	default:
-		return ":Regular"
+// Find tries to locate the specified font file in the current directory as
+// well as in platform specific user and system font directories; if there is
+// no exact match, Find tries substring matching.
+func Find(fileName string) (string, error) {
+	return FindWithSuffixes(fileName, defaultSuffixes())
+}
+
+// FindWithSuffixes tries to locate the specified font file in the current directory as
+// well as in platform specific user and system font directories; if there is
+// no exact match, Find tries substring matching - only font files with the given suffixes are considered.
+func FindWithSuffixes(fileName string, suffixes []string) (string, error) {
+	if _, err := os.Stat(fileName); err == nil {
+		return fileName, nil
 	}
+
+	return find(filepath.Base(fileName), suffixes)
+}
+
+// List returns a list of all font files found on the system.
+func List() []string {
+	return ListWithSuffixes(defaultSuffixes())
+}
+
+// ListWithSuffixes returns a list of all font files with given suffixes found on the system.
+func ListWithSuffixes(suffixes []string) []string {
+	pathList := []string{}
+
+	walkF := func(path string, info os.FileInfo, err error) error {
+		if err == nil {
+			if !info.IsDir() && isFontFile(path, suffixes) {
+				pathList = append(pathList, path)
+			}
+		}
+		return nil
+	}
+
+	for _, dir := range getFontDirectories() {
+		filepath.Walk(dir, walkF)
+	}
+
+	return pathList
+}
+
+func isFontFile(fileName string, suffixes []string) bool {
+	lower := strings.ToLower(fileName)
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func stripExtension(fileName string) string {
+	return strings.TrimSuffix(fileName, filepath.Ext(fileName))
+}
+
+func expandUser(path string) string {
+	if strings.HasPrefix(path, "~") {
+		if u, err := user.Current(); err == nil {
+			return strings.Replace(path, "~", u.HomeDir, 1)
+		}
+	}
+	return path
+}
+
+func find(needle string, suffixes []string) (string, error) {
+	lowerNeedle := strings.ToLower(needle)
+	lowerNeedleBase := stripExtension(lowerNeedle)
+
+	match := ""
+	partial := ""
+	partialScore := -1
+
+	walkF := func(path string, info os.FileInfo, err error) error {
+		if match != "" {
+			return nil
+		}
+		if err != nil {
+			return nil
+		}
+
+		lowerPath := strings.ToLower(info.Name())
+
+		if !info.IsDir() && isFontFile(lowerPath, suffixes) {
+			lowerBase := stripExtension(lowerPath)
+			if lowerPath == lowerNeedle {
+				match = path
+			} else if strings.Contains(lowerBase, lowerNeedleBase) {
+				score := len(lowerBase) - len(lowerNeedle)
+				if partialScore < 0 || score < partialScore {
+					partialScore = score
+					partial = path
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, dir := range getFontDirectories() {
+		filepath.Walk(dir, walkF)
+		if match != "" {
+			return match, nil
+		}
+	}
+
+	if partial != "" {
+		return partial, nil
+	}
+
+	return "", fmt.Errorf("cannot find font '%s' in user or system directories", needle)
 }

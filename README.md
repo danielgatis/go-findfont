@@ -4,7 +4,7 @@
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/danielgatis/go-findfont/master/LICENSE)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/danielgatis/go-findfont)
 
-Find system fonts through the fontconfig library (a.k.a `fc-match`)
+A pure Go library to find fonts on the system. Works on macOS, Linux, and Windows without any external dependencies.
 
 ## Install
 
@@ -18,9 +18,9 @@ And then import the package in your code:
 import "github.com/danielgatis/go-findfont/findfont"
 ```
 
-### Example
+## Usage
 
-An example described below is one of the use cases.
+### Find a font by name
 
 ```go
 package main
@@ -33,35 +33,55 @@ import (
 )
 
 func main() {
-	fonts, err := findfont.Find("Emoji", findfont.FontRegular)
-
+	path, err := findfont.Find("Arial")
 	if err != nil {
-		fmt.Printf("Err: %v", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	for _, f := range fonts {
-		fmt.Printf("Family: %v\nStyle : %v\nPath  : %v\n\n", f[0], f[1], f[2])
-	}
+	fmt.Println(path)
 }
 ```
 
-
 ```
 ❯ go run main.go
-Family: Apple Color Emoji
-Style : Regular,標準體,Ordinær,Normal,Normaali,Regolare,レギュラー,일반체,Regulier,Обычный,常规体,عادي
-Path  : /System/Library/Fonts/Apple Color Emoji.ttc
-
-Family: Twitter Color Emoji
-Style : Regular
-Path  : /Users/daniel/Library/Fonts/TwitterColorEmoji-SVGinOT.ttf
-
-Family: .LastResort
-Style : Regular
-Path  : /System/Library/Fonts/LastResort.otf
+/System/Library/Fonts/Supplemental/Arial.ttf
 ```
 
+### List all fonts
+
+```go
+fonts := findfont.List()
+for _, f := range fonts {
+	fmt.Println(f)
+}
+```
+
+### Find with custom suffixes
+
+```go
+path, err := findfont.FindWithSuffixes("MyFont", []string{".ttf", ".otf"})
+```
+
+## CLI
+
+You can also use it as a command-line tool:
+
+```bash
+# Find a font
+go-findfont Arial
+
+# List all fonts
+go-findfont --list
+```
+
+## Supported Platforms
+
+| Platform | Font Directories |
+|----------|------------------|
+| macOS    | `~/Library/Fonts`, `/Library/Fonts`, `/System/Library/Fonts` |
+| Linux    | `~/.fonts`, `~/.local/share/fonts`, `/usr/share/fonts`, `/usr/local/share/fonts` |
+| Windows  | `%windir%\Fonts`, `%localappdata%\Microsoft\Windows\Fonts` |
 
 ## License
 
